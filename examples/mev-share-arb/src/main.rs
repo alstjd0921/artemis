@@ -1,6 +1,12 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use alloy::{
+    network::EthereumWallet,
+    primitives::Address,
+    providers::{ProviderBuilder, WsConnect},
+    signers::local::PrivateKeySigner,
+};
+use anyhow::{Context, Result};
 use artemis_core::{
     collectors::mevshare_collector::MevShareCollector,
     engine::Engine,
@@ -8,12 +14,6 @@ use artemis_core::{
     types::{CollectorMap, ExecutorMap},
 };
 use clap::Parser;
-use ethers::{
-    prelude::MiddlewareBuilder,
-    providers::{Provider, Ws},
-    signers::{LocalWallet, Signer},
-    types::Address,
-};
 use mev_share_uni_arb::{
     strategy::MevShareUniArb,
     types::{Action, Event},
@@ -30,7 +30,7 @@ pub struct Args {
     /// Private key for sending txs.
     #[arg(long)]
     pub private_key: String,
-    /// MEV share signer
+    /// MEV share signer.
     #[arg(long)]
     pub flashbots_signer: String,
     /// Address of the arb contract.
@@ -51,15 +51,25 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    //  Set up providers and signers.
-    let ws = Ws::connect(args.wss).await?;
-    let provider = Provider::new(ws);
+    // Set up provider and signers.
+    let ws = WsConnect::new(args.wss.clone());
+    let provider = Arc::new(
+        ProviderBuilder::new()
+            .connect_ws(ws)
+            .await
+            .context("failed to connect websocket provider")?,
+    );
 
-    let wallet: LocalWallet = args.private_key.parse().unwrap();
-    let address = wallet.address();
+    let wallet_signer: PrivateKeySigner = args
+        .private_key
+        .parse()
+        .context("failed to parse private key")?;
+    let wallet = EthereumWallet::from(wallet_signer);
 
-    let provider = Arc::new(provider.nonce_manager(address).with_signer(wallet.clone()));
-    let fb_signer: LocalWallet = args.flashbots_signer.parse().unwrap();
+    let fb_signer: PrivateKeySigner = args
+        .flashbots_signer
+        .parse()
+        .context("failed to parse flashbots signer key")?;
 
     // Set up engine.
     let mut engine: Engine<Event, Action> = Engine::default();
@@ -72,11 +82,7 @@ async fn main() -> Result<()> {
     engine.add_collector(Box::new(mevshare_collector));
 
     // Set up strategy.
-    let strategy = MevShareUniArb::new(
-        Arc::new(provider.clone()),
-        wallet,
-        args.arb_contract_address,
-    );
+    let strategy = MevShareUniArb::new(provider.clone(), wallet.clone(), args.arb_contract_address);
     engine.add_strategy(Box::new(strategy));
 
     // Set up executor.

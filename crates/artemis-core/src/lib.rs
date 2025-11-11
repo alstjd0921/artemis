@@ -33,7 +33,7 @@ pub mod collectors;
 pub mod engine;
 /// This module contains [executor](types::Executor) implementations.
 pub mod executors;
+/// Shared MEV-share types leveraged by collectors and strategies.
+pub mod mevshare;
 /// This module contains the core type definitions for Artemis.
 pub mod types;
-/// This module contains utilities for working with Artemis.
-pub mod utilities;

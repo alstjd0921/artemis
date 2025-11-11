@@ -1,15 +1,12 @@
-use std::{
-    ops::{Div, Mul},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use crate::types::Executor;
+use alloy::network::TransactionBuilder;
+use alloy::primitives::U256;
+use alloy::providers::Provider;
+use alloy::rpc::types::TransactionRequest;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use ethers::{
-    providers::Middleware,
-    types::{transaction::eip2718::TypedTransaction, U256},
-};
 
 /// An executor that sends transactions to the mempool.
 pub struct MempoolExecutor<M> {
@@ -28,11 +25,11 @@ pub struct GasBidInfo {
 
 #[derive(Debug, Clone)]
 pub struct SubmitTxToMempool {
-    pub tx: TypedTransaction,
+    pub tx: TransactionRequest,
     pub gas_bid_info: Option<GasBidInfo>,
 }
 
-impl<M: Middleware> MempoolExecutor<M> {
+impl<M: Provider + Send + Sync + 'static> MempoolExecutor<M> {
     pub fn new(client: Arc<M>) -> Self {
         Self { client }
     }
@@ -41,34 +38,34 @@ impl<M: Middleware> MempoolExecutor<M> {
 #[async_trait]
 impl<M> Executor<SubmitTxToMempool> for MempoolExecutor<M>
 where
-    M: Middleware,
-    M::Error: 'static,
+    M: Provider + Send + Sync + 'static,
 {
     /// Send a transaction to the mempool.
-    async fn execute(&self, mut action: SubmitTxToMempool) -> Result<()> {
-        let gas_usage = self
-            .client
-            .estimate_gas(&action.tx, None)
-            .await
-            .context("Error estimating gas usage: {}")?;
+    async fn execute(&self, action: SubmitTxToMempool) -> Result<()> {
+        let mut tx = action.tx;
+        let gas_usage = U256::from(
+            self.client
+                .estimate_gas(tx.clone())
+                .await
+                .context("Error estimating gas usage")?,
+        );
 
-        let bid_gas_price;
-        if let Some(gas_bid_info) = action.gas_bid_info {
+        let bid_gas_price = if let Some(gas_bid_info) = action.gas_bid_info {
             // gas price at which we'd break even, meaning 100% of profit goes to validator
             let breakeven_gas_price = gas_bid_info.total_profit / gas_usage;
             // gas price corresponding to bid percentage
-            bid_gas_price = breakeven_gas_price
-                .mul(gas_bid_info.bid_percentage)
-                .div(100);
+            let scaled = breakeven_gas_price
+                * U256::from(gas_bid_info.bid_percentage)
+                / U256::from(100u64);
+            u128::try_from(scaled).context("bid gas price exceeds u128 range")?
         } else {
-            bid_gas_price = self
-                .client
+            self.client
                 .get_gas_price()
                 .await
-                .context("Error getting gas price: {}")?;
-        }
-        action.tx.set_gas_price(bid_gas_price);
-        self.client.send_transaction(action.tx, None).await?;
+                .context("Error getting gas price")?
+        };
+        tx = tx.with_gas_price(bid_gas_price);
+        let _pending = self.client.send_transaction(tx).await?;
         Ok(())
     }
 }

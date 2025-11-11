@@ -1,74 +1,162 @@
 use std::sync::Arc;
 
-use anyhow::Result;
-use async_trait::async_trait;
-use ethers::{
-    providers::Middleware, signers::Signer, types::transaction::eip2718::TypedTransaction,
+use alloy::{
+    eips::Encodable2718,
+    network::{Ethereum, NetworkWallet, TransactionBuilder},
+    primitives::hex,
+    providers::{ext::sign_flashbots_payload, Provider},
+    rpc::types::eth::TransactionRequest,
+    signers::Signer,
 };
-use ethers_flashbots::{BundleRequest, FlashbotsMiddleware};
-use reqwest::Url;
-use tracing::error;
+use anyhow::{Context, Result};
+use async_trait::async_trait;
+use reqwest::{header, Client, Url};
+use serde::Serialize;
+use tracing::{error, info};
 
 use crate::types::Executor;
 
-/// A Flashbots executor that sends transactions to the Flashbots relay.
-pub struct FlashbotsExecutor<M, S> {
-    /// The Flashbots middleware.
-    fb_client: FlashbotsMiddleware<Arc<M>, S>,
+/// A bundle of transactions to send to the Flashbots relay.
+pub type FlashbotsBundle = Vec<TransactionRequest>;
 
-    /// The signer to sign transactions before sending to the relay.
-    tx_signer: S,
+/// A Flashbots executor that sends transactions to the Flashbots relay using Alloy primitives.
+pub struct FlashbotsExecutor<P, TxSigner, AuthSigner> {
+    /// Provider used for fetching network data such as block numbers.
+    provider: Arc<P>,
+    /// HTTP client pointing at the Flashbots relay.
+    client: Client,
+    /// Flashbots relay endpoint.
+    relay_url: Url,
+    /// Signer used to sign transactions before broadcasting.
+    tx_signer: TxSigner,
+    /// Signer used to authenticate requests with `X-Flashbots-Signature`.
+    auth_signer: AuthSigner,
 }
 
-/// A bundle of transactions to send to the Flashbots relay.
-pub type FlashbotsBundle = Vec<TypedTransaction>;
+impl<P, TxSigner, AuthSigner> FlashbotsExecutor<P, TxSigner, AuthSigner>
+where
+    P: Provider + Send + Sync + 'static,
+    TxSigner: Signer + NetworkWallet<Ethereum> + Send + Sync + 'static,
+    AuthSigner: Signer + Send + Sync + 'static,
+{
+    pub fn new(provider: Arc<P>, tx_signer: TxSigner, auth_signer: AuthSigner, relay_url: Url) -> Self {
+        let client = Client::builder()
+            .user_agent("artemis-flashbots-executor")
+            .build()
+            .expect("failed to build Flashbots HTTP client");
 
-impl<M: Middleware, S: Signer> FlashbotsExecutor<M, S> {
-    pub fn new(client: Arc<M>, tx_signer: S, relay_signer: S, relay_url: impl Into<Url>) -> Self {
-        let fb_client = FlashbotsMiddleware::new(client, relay_url, relay_signer);
         Self {
-            fb_client,
+            provider,
+            client,
+            relay_url,
             tx_signer,
+            auth_signer,
         }
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct FlashbotsBundlePayload {
+    txs: Vec<String>,
+    #[serde(rename = "blockNumber")]
+    block_number: String,
+    #[serde(rename = "minTimestamp", skip_serializing_if = "Option::is_none")]
+    min_timestamp: Option<u64>,
+    #[serde(rename = "maxTimestamp", skip_serializing_if = "Option::is_none")]
+    max_timestamp: Option<u64>,
+    #[serde(rename = "revertingTxHashes", skip_serializing_if = "Option::is_none")]
+    reverting_tx_hashes: Option<Vec<String>>,
+    #[serde(rename = "replacementUuid", skip_serializing_if = "Option::is_none")]
+    replacement_uuid: Option<String>,
+    #[serde(rename = "stateBlockNumber", skip_serializing_if = "Option::is_none")]
+    state_block_number: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonRpcRequest<T> {
+    jsonrpc: &'static str,
+    method: &'static str,
+    params: [T; 1],
+    id: u64,
+}
+
 #[async_trait]
-impl<M, S> Executor<FlashbotsBundle> for FlashbotsExecutor<M, S>
+impl<P, TxSigner, AuthSigner> Executor<FlashbotsBundle> for FlashbotsExecutor<P, TxSigner, AuthSigner>
 where
-    M: Middleware + 'static,
-    M::Error: 'static,
-    S: Signer + 'static,
+    P: Provider + Send + Sync + 'static,
+    TxSigner: Signer + NetworkWallet<Ethereum> + Send + Sync + 'static,
+    AuthSigner: Signer + Send + Sync + 'static,
 {
-    /// Send a bundle to transactions to the Flashbots relay.
-    async fn execute(&self, action: FlashbotsBundle) -> Result<()> {
-        // Add txs to bundle.
-        let mut bundle = BundleRequest::new();
-
-        // Sign each transaction in bundle.
-        for tx in action {
-            let signature = self.tx_signer.sign_transaction(&tx).await?;
-            bundle.add_transaction(tx.rlp_signed(&signature));
+    /// Send a bundle of transactions to the Flashbots relay.
+    async fn execute(&self, bundle: FlashbotsBundle) -> Result<()> {
+        if bundle.is_empty() {
+            return Ok(());
         }
 
-        // Simulate bundle.
-        let block_number = self.fb_client.get_block_number().await?;
-        let bundle = bundle
-            .set_block(block_number + 1)
-            .set_simulation_block(block_number)
-            .set_simulation_timestamp(0);
+        let mut raw_txs = Vec::with_capacity(bundle.len());
 
-        let simulated_bundle = self.fb_client.simulate_bundle(&bundle).await;
-
-        if let Err(simulate_error) = simulated_bundle {
-            error!("Error simulating bundle: {:?}", simulate_error);
+        for mut tx in bundle {
+            if tx.from.is_none() {
+                tx.from = Some(self.tx_signer.address());
+            }
+            let envelope = tx
+                .clone()
+                .build(&self.tx_signer)
+                .await
+                .context("failed to sign flashbots transaction")?;
+            let raw = envelope.encoded_2718();
+            raw_txs.push(hex::encode_prefixed(raw));
         }
 
-        // Send bundle.
-        let pending_bundle = self.fb_client.send_bundle(&bundle).await;
+        let current_number = self
+            .provider
+            .get_block_number()
+            .await
+            .context("failed to fetch latest block number for flashbots bundle")?;
+        let target_block = current_number + 1;
 
-        if let Err(send_error) = pending_bundle {
-            error!("Error sending bundle: {:?}", send_error);
+        let payload = FlashbotsBundlePayload {
+            txs: raw_txs,
+            block_number: format!("0x{:x}", target_block),
+            min_timestamp: None,
+            max_timestamp: None,
+            reverting_tx_hashes: None,
+            replacement_uuid: None,
+            state_block_number: None,
+        };
+
+        let rpc_request = JsonRpcRequest {
+            jsonrpc: "2.0",
+            method: "eth_sendBundle",
+            params: [payload],
+            id: 1,
+        };
+
+        let body = serde_json::to_string(&rpc_request).context("failed to serialize flashbots bundle")?;
+        let signature = sign_flashbots_payload(body.clone(), &self.auth_signer)
+            .await
+            .context("failed to sign flashbots payload")?;
+
+        let response = self
+            .client
+            .post(self.relay_url.clone())
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("X-Flashbots-Signature", signature)
+            .body(body.clone())
+            .send()
+            .await
+            .context("failed to send flashbots bundle request")?;
+
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            error!(
+                "Flashbots relay returned error status {} with body {}",
+                status, text
+            );
+        } else {
+            info!("Flashbots relay response: {}", text);
         }
 
         Ok(())

@@ -1,19 +1,20 @@
 [workspace]
+resolver = "3"
+
 members = [
     "bin/artemis",
     "bin/cli",
     "crates/artemis-core",
     "crates/generator",
-    "crates/strategies/*",
-    "crates/clients/*", 
+    "crates/strategies/mev-share-uni-arb",
     "examples/*",
 ]
-
 default-members = ["bin/artemis", "bin/cli"]
 
 [workspace.dependencies]
 ## eth
-ethers = { version = "2", features = ["ws", "rustls"]}
+alloy = { version = "1.1.0", features = ["full", "provider-mev-api"] }
+ethers = { version = "2", features = ["ws", "rustls"] }
 ethers-signers = "2.0"
 
 
@@ -22,4 +23,3 @@ panic = 'abort'
 
 [profile.dev]
 panic = 'abort'
-

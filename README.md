@@ -22,7 +22,7 @@ At its core, Artemis is architected as an event processing pipeline. The library
 
 The following strategies have been implemented: 
 
-- [Opensea/Sudoswap NFT Arbitrage](/crates/strategies/opensea-sudo-arb/): A strategy implementing atomic, cross-market NFT arbitrage between Seaport and Sudoswap.
+- [MEV-Share Uniswap Arbitrage](/crates/strategies/mev-share-uni-arb/): An example strategy for building bundles with MEV-Share order flow.
 
 ## Build, Test and Run
 
@@ -42,14 +42,7 @@ Next, run tests with cargo:
 cargo test --all
 ```
 
-In order to run the opensea sudoswap arbitrage strategy, you can run the following command: 
-
-```sh
-cargo run -- --wss <INFURA_OR_ALCHEMY_KEY> --opensea-api-key <OPENSEA_API_KEY> --private-key <PRIVATE_KEY> --arb-contract-address <ARB_CONTRACT_ADDRESS> --bid-percentage <BID_PERCENTAGE>
-```
-
-where `ARB_CONTRACT_ADDRESS` is the address to which you deploy the [arb contract](/crates/strategies/opensea-sudo-arb/contracts/src/SudoOpenseaArb.sol).
-
+The legacy Opensea/Sudoswap arbitrage strategy has been removed as part of the Alloy migration.
 
 ## Acknowledgements
 

@@ -1,63 +1,73 @@
 use std::collections::HashMap;
-use std::ops::Add;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use async_trait::async_trait;
-
+use alloy::rpc::types::mev::{BundleItem, Inclusion, MevSendBundle, ProtocolVersion};
+use alloy::{
+    eips::Encodable2718,
+    network::{Ethereum, NetworkWallet, TransactionBuilder},
+    primitives::Bytes,
+    primitives::{Address, B256, U256 as AlloyU256},
+    providers::Provider,
+};
 use anyhow::Result;
 use artemis_core::types::Strategy;
-
-use ethers::signers::Signer;
-
-use ethers::providers::Middleware;
-use ethers::types::{Address, H256};
-use ethers::types::{H160, U256};
-use mev_share::rpc::{BundleItem, Inclusion, SendBundleRequest};
+use async_trait::async_trait;
 use tracing::info;
 
 use crate::types::V2V3PoolRecord;
 
 use super::types::{Action, Event};
 
-use mev_share_bindings::blind_arb::BlindArb;
+use mev_share_bindings::blind_arb;
 
-/// Information about a uniswap v2 pool.
+/// Information about an uniswap v2 pool.
 #[derive(Debug, Clone)]
 pub struct V2PoolInfo {
     /// Address of the v2 pool.
-    pub v2_pool: H160,
+    pub v2_pool: Address,
     /// Whether the pool has weth as token0.
     pub is_weth_token0: bool,
 }
 
 #[derive(Debug, Clone)]
-pub struct MevShareUniArb<M, S> {
-    /// Ethers client.
-    client: Arc<M>,
+pub struct MevShareUniArb<P, W>
+where
+    P: Provider + Send + Sync + 'static,
+    W: NetworkWallet<Ethereum> + Clone + Send + Sync + 'static,
+{
+    /// Alloy provider used to query on-chain data.
+    provider: Arc<P>,
     /// Maps uni v3 pool address to v2 pool information.
-    pool_map: HashMap<H160, V2PoolInfo>,
-    /// Signer for transactions.
-    tx_signer: S,
-    /// Arb contract.
-    arb_contract: BlindArb<M>,
+    pool_map: HashMap<Address, V2PoolInfo>,
+    /// Wallet used for signing transactions.
+    wallet: W,
+    /// BlindArb contract instance.
+    arb_contract: blind_arb::BlindArb::BlindArbInstance<Arc<P>>,
 }
 
-impl<M: Middleware + 'static, S: Signer> MevShareUniArb<M, S> {
+impl<P, W> MevShareUniArb<P, W>
+where
+    P: Provider + Send + Sync + 'static,
+    W: NetworkWallet<Ethereum> + Clone + Send + Sync + 'static,
+{
     /// Create a new instance of the strategy.
-    pub fn new(client: Arc<M>, signer: S, arb_contract_address: Address) -> Self {
+    pub fn new(provider: Arc<P>, wallet: W, arb_contract_address: Address) -> Self {
+        let arb_contract = blind_arb::BlindArb::new(arb_contract_address, provider.clone());
         Self {
-            client: client.clone(),
+            provider,
             pool_map: HashMap::new(),
-            tx_signer: signer,
-            arb_contract: BlindArb::new(arb_contract_address, client),
+            wallet,
+            arb_contract,
         }
     }
 }
 
 #[async_trait]
-impl<M: Middleware + 'static, S: Signer + 'static> Strategy<Event, Action>
-    for MevShareUniArb<M, S>
+impl<P, W> Strategy<Event, Action> for MevShareUniArb<P, W>
+where
+    P: Provider + Send + Sync + 'static,
+    W: NetworkWallet<Ethereum> + Clone + Send + Sync + 'static,
 {
     /// Initialize the strategy. This is called once at startup, and loads
     /// pool information into memory.
@@ -111,85 +121,95 @@ impl<M: Middleware + 'static, S: Signer + 'static> Strategy<Event, Action>
     }
 }
 
-impl<M: Middleware + 'static, S: Signer + 'static> MevShareUniArb<M, S> {
+impl<P, W> MevShareUniArb<P, W>
+where
+    P: Provider + Send + Sync + 'static,
+    W: NetworkWallet<Ethereum> + Clone + Send + Sync + 'static,
+{
     /// Generate a series of bundles of varying sizes to submit to the matchmaker.
-    pub async fn generate_bundles(
-        &self,
-        v3_address: H160,
-        tx_hash: H256,
-    ) -> Vec<SendBundleRequest> {
+    pub async fn generate_bundles(&self, v3_address: Address, tx_hash: B256) -> Vec<MevSendBundle> {
         let mut bundles = Vec::new();
         let v2_info = self.pool_map.get(&v3_address).unwrap();
 
         // The sizes of the backruns we want to submit.
         // TODO: Run some analysis to figure out likely sizes.
         let sizes = vec![
-            U256::from(100000_u128),
-            U256::from(1000000_u128),
-            U256::from(10000000_u128),
-            U256::from(100000000_u128),
-            U256::from(1000000000_u128),
-            U256::from(10000000000_u128),
-            U256::from(100000000000_u128),
-            U256::from(1000000000000_u128),
-            U256::from(10000000000000_u128),
-            U256::from(100000000000000_u128),
-            U256::from(1000000000000000_u128),
-            U256::from(10000000000000000_u128),
-            U256::from(100000000000000000_u128),
-            U256::from(1000000000000000000_u128),
+            AlloyU256::from(100_000_u128),
+            AlloyU256::from(1_000_000_u128),
+            AlloyU256::from(10_000_000_u128),
+            AlloyU256::from(100_000_000_u128),
+            AlloyU256::from(1_000_000_000_u128),
+            AlloyU256::from(10_000_000_000_u128),
+            AlloyU256::from(100_000_000_000_u128),
+            AlloyU256::from(1_000_000_000_000_u128),
+            AlloyU256::from(10_000_000_000_000_u128),
+            AlloyU256::from(100_000_000_000_000_u128),
+            AlloyU256::from(1_000_000_000_000_000_u128),
+            AlloyU256::from(10_000_000_000_000_000_u128),
+            AlloyU256::from(100_000_000_000_000_000_u128),
+            AlloyU256::from(1_000_000_000_000_000_000_u128),
         ];
 
         // Set parameters for the backruns.
-        let payment_percentage = U256::from(0);
-        let bid_gas_price = self.client.get_gas_price().await.unwrap();
-        let block_num = self.client.get_block_number().await.unwrap();
+        let payment_percentage = AlloyU256::ZERO;
+        let bid_gas_price = match self.provider.get_gas_price().await {
+            Ok(price) => price,
+            Err(err) => {
+                info!("Failed to fetch gas price: {err:?}");
+                return bundles;
+            }
+        };
+        let block_num = match self.provider.get_block_number().await {
+            Ok(number) => number,
+            Err(err) => {
+                info!("Failed to fetch block number: {err:?}");
+                return bundles;
+            }
+        };
+        let chain_id = match self.provider.get_chain_id().await {
+            Ok(id) => id,
+            Err(err) => {
+                info!("Failed to fetch chain id: {err:?}");
+                return bundles;
+            }
+        };
+        let sender = self.wallet.default_signer_address();
+        let nonce = match self.provider.get_transaction_count(sender).await {
+            Ok(value) => value,
+            Err(err) => {
+                info!("Failed to fetch signer nonce: {err:?}");
+                return bundles;
+            }
+        };
 
         for size in sizes {
-            let arb_tx = {
-                // Construct arb tx based on whether the v2 pool has weth as token0.
-                let mut inner = match v2_info.is_weth_token0 {
-                    true => {
-                        self.arb_contract
-                            .execute_arb_weth_token_0(
-                                v2_info.v2_pool,
-                                v3_address,
-                                size,
-                                payment_percentage,
-                            )
-                            .tx
-                    }
-                    false => {
-                        self.arb_contract
-                            .execute_arb_weth_token_1(
-                                v2_info.v2_pool,
-                                v3_address,
-                                size,
-                                payment_percentage,
-                            )
-                            .tx
-                    }
-                };
-                // Set gas parameters (this is a bit hacky)
-                inner.set_gas(400000);
-                inner.set_gas_price(bid_gas_price);
-                let fill = self.client.fill_transaction(&mut inner, None).await;
-
-                match fill {
-                    Ok(_) => {}
-                    Err(e) => {
-                        println!("Error filling tx: {}", e);
-                        continue;
-                    }
-                }
-
-                inner
+            // Construct arb tx based on whether the v2 pool has weth as token0.
+            let mut tx = if v2_info.is_weth_token0 {
+                self.arb_contract
+                    .executeArb__WETH_token0(v2_info.v2_pool, v3_address, size, payment_percentage)
+                    .into_transaction_request()
+            } else {
+                self.arb_contract
+                    .executeArb__WETH_token1(v2_info.v2_pool, v3_address, size, payment_percentage)
+                    .into_transaction_request()
             };
-            info!("generated arb tx: {:?}", arb_tx);
+            tx.set_from(sender);
+            tx.set_nonce(nonce);
+            tx.set_chain_id(chain_id);
+            tx.set_gas_limit(400_000);
+            tx.set_gas_price(bid_gas_price);
+            tx.set_value(AlloyU256::ZERO);
 
-            // Sign tx and construct bundle
-            let signature = self.tx_signer.sign_transaction(&arb_tx).await.unwrap();
-            let bytes = arb_tx.rlp_signed(&signature);
+            info!("generated arb tx: {:?}", tx);
+
+            let envelope = match tx.clone().build(&self.wallet).await {
+                Ok(env) => env,
+                Err(err) => {
+                    info!("Failed to sign arb transaction: {err:?}");
+                    continue;
+                }
+            };
+            let bytes = Bytes::from(envelope.encoded_2718());
             let txs = vec![
                 BundleItem::Hash { hash: tx_hash },
                 BundleItem::Tx {
@@ -197,14 +217,16 @@ impl<M: Middleware + 'static, S: Signer + 'static> MevShareUniArb<M, S> {
                     can_revert: false,
                 },
             ];
-            let bundle = SendBundleRequest {
-                bundle_body: txs,
+            let bundle = MevSendBundle {
+                protocol_version: ProtocolVersion::default(),
                 inclusion: Inclusion {
-                    block: block_num.add(1),
+                    block: block_num + 1,
                     // set a large validity window to ensure builder gets a chance to include bundle.
-                    max_block: Some(block_num.add(30)),
+                    max_block: Some(block_num + 30),
                 },
-                ..Default::default()
+                bundle_body: txs,
+                validity: None,
+                privacy: None,
             };
             info!("submitting bundle: {:?}", bundle);
             bundles.push(bundle);
