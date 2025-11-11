@@ -103,3 +103,21 @@ fn extract_event(buffer: &mut Vec<u8>) -> Option<String> {
 
     Some(String::from_utf8_lossy(&event_bytes).into_owned())
 }
+
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn mevshare_collector() {
+        let collector = MevShareCollector::new("https://mev-share.flashbots.net".into());
+        let mut stream = collector
+            .get_event_stream()
+            .await
+            .expect("failed to get event");
+
+        while let Some(event) = stream.next().await {
+            dbg!(&event);
+            break;
+        }
+    }
+}

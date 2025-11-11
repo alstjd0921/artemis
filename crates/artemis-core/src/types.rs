@@ -96,11 +96,11 @@ where
 /// Convenience enum containing all the events that can be emitted by collectors.
 pub enum Events {
     NewBlock(NewBlock),
-    Transaction(Transaction),
+    Transaction(Box<Transaction>),
 }
 
 /// Convenience enum containing all the actions that can be executed by executors.
 pub enum Actions {
     FlashbotsBundle(FlashbotsBundle),
-    SubmitTxToMempool(SubmitTxToMempool),
+    SubmitTxToMempool(Box<SubmitTxToMempool>),
 }
