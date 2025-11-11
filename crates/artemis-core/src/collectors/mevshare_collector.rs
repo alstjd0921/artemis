@@ -27,7 +27,7 @@ impl MevShareCollector {
 /// [MevShareCollector](MevShareCollector).
 #[async_trait]
 impl Collector<Event> for MevShareCollector {
-    async fn get_event_stream(&self) -> Result<CollectorStream<'life0, Event>> {
+    async fn get_event_stream<'life1>(&self) -> Result<CollectorStream<'life1, Event>> {
         let (tx, rx) = mpsc::unbounded_channel();
         let url = self.mevshare_sse_url.clone();
         let client = Client::new();
@@ -86,7 +86,8 @@ impl Collector<Event> for MevShareCollector {
 
 fn extract_event(buffer: &mut Vec<u8>) -> Option<String> {
     fn find_delim(buf: &[u8], pattern: &[u8]) -> Option<usize> {
-        buf.windows(pattern.len()).position(|window| window == pattern)
+        buf.windows(pattern.len())
+            .position(|window| window == pattern)
     }
 
     let (event_len, delim_len) = if let Some(pos) = find_delim(buffer, b"\r\n\r\n") {

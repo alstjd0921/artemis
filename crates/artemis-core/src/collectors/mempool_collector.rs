@@ -1,7 +1,7 @@
 use crate::types::{Collector, CollectorStream};
-use anyhow::Result;
 use alloy::providers::Provider;
 use alloy::rpc::types::eth::Transaction;
+use anyhow::Result;
 use async_trait::async_trait;
 use futures::StreamExt;
 use std::sync::Arc;
@@ -25,7 +25,7 @@ impl<M> Collector<Transaction> for MempoolCollector<M>
 where
     M: Provider + Send + Sync + 'static,
 {
-    async fn get_event_stream(&self) -> Result<CollectorStream<'life0, Transaction>> {
+    async fn get_event_stream<'life1>(&self) -> Result<CollectorStream<'life1, Transaction>> {
         let provider = self.provider.clone();
         let stream = self.provider.subscribe_pending_transactions().await?;
         let stream = stream.into_stream().filter_map(move |hash| {

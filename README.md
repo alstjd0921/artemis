@@ -22,7 +22,7 @@ At its core, Artemis is architected as an event processing pipeline. The library
 
 The following strategies have been implemented: 
 
-- [MEV-Share Uniswap Arbitrage](/crates/strategies/mev-share-uni-arb/): An example strategy for building bundles with MEV-Share order flow.
+- [MEV-Share Uniswap Arbitrage](/crates/strategies/mev-share-uni-arb): An example strategy for building bundles with MEV-Share order flow.
 
 ## Build, Test and Run
 

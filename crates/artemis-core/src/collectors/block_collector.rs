@@ -32,7 +32,7 @@ impl<M> Collector<NewBlock> for BlockCollector<M>
 where
     M: Provider + Send + Sync + 'static,
 {
-    async fn get_event_stream(&self) -> Result<CollectorStream<'life0, NewBlock>> {
+    async fn get_event_stream<'life1>(&self) -> Result<CollectorStream<'life1, NewBlock>> {
         let stream = self
             .provider
             .subscribe_blocks()

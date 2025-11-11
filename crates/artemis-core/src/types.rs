@@ -16,7 +16,7 @@ pub type CollectorStream<'a, E> = Pin<Box<dyn Stream<Item = E> + Send + 'a>>;
 #[async_trait]
 pub trait Collector<E>: Send + Sync {
     /// Returns the core event stream for the collector.
-    async fn get_event_stream(&self) -> Result<CollectorStream<'life0, E>>;
+    async fn get_event_stream<'life1>(&self) -> Result<CollectorStream<'life1, E>>;
 }
 
 /// Strategy trait, which defines the core logic for each opportunity.
@@ -56,7 +56,7 @@ where
     E2: Send + Sync + 'static,
     F: Fn(E1) -> E2 + Send + Sync + Clone + 'static,
 {
-    async fn get_event_stream(&self) -> Result<CollectorStream<'life0, E2>> {
+    async fn get_event_stream<'life1>(&self) -> Result<CollectorStream<'life1, E2>> {
         let stream = self.collector.get_event_stream().await?;
         let f = self.f.clone();
         let stream = stream.map(f);
