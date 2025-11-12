@@ -1,10 +1,10 @@
 use crate::types::Executor;
-use alloy::primitives::{hex, keccak256, Signature};
+use alloy::providers::ext::sign_flashbots_payload;
 use alloy::rpc::types::mev::MevSendBundle;
 use alloy::signers::Signer;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use reqwest::{header, Client, Url};
+use reqwest::{Client, Url, header};
 use serde::Serialize;
 use tracing::{error, info};
 
@@ -57,9 +57,9 @@ where
             id: 1,
         };
 
-        let body = serde_json::to_string(&rpc_request)
-            .context("failed to serialize MEV-share bundle")?;
-        let signature = sign_flashbots_payload(&body, &self.auth_signer).await?;
+        let body =
+            serde_json::to_string(&rpc_request).context("failed to serialize MEV-share bundle")?;
+        let signature = sign_flashbots_payload(body.clone(), &self.auth_signer).await?;
 
         let response = self
             .client
@@ -96,17 +96,4 @@ where
 
         Ok(())
     }
-}
-
-async fn sign_flashbots_payload<S>(body: &str, signer: &S) -> Result<String>
-where
-    S: Signer<Signature> + Send + Sync + 'static,
-{
-    let digest = keccak256(body.as_bytes());
-    let signature = signer
-        .sign_hash(&digest)
-        .await
-        .context("failed to sign MEV-share payload")?;
-    let signature_hex = hex::encode_prefixed(Vec::<u8>::from(signature));
-    Ok(format!("{:#x}:{}", signer.address(), signature_hex))
 }
