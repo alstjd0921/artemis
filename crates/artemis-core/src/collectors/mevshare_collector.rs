@@ -72,7 +72,7 @@ impl Collector<Event> for MevShareCollector {
                                     let _ = tx.send(evt);
                                 }
                                 Err(err) => {
-                                    warn!("failed to parse MEV-share event: {err}");
+                                    trace!("failed to parse MEV-share event: {err}");
                                 }
                             }
                         }
