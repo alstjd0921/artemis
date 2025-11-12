@@ -1,4 +1,4 @@
-use tokio::sync::broadcast::{self, Sender};
+use tokio::sync::broadcast::{self, error::RecvError, Sender};
 use tokio::task::JoinSet;
 use tokio_stream::StreamExt;
 use tracing::{error, info};
@@ -92,7 +92,13 @@ where
                             Ok(_) => {}
                             Err(e) => error!("error executing action: {}", e),
                         },
-                        Err(e) => error!("error receiving action: {}", e),
+                        Err(RecvError::Closed) => {
+                            info!("action channel closed; stopping executor thread");
+                            break;
+                        }
+                        Err(RecvError::Lagged(skipped)) => {
+                            error!("executor lagged and skipped {} actions", skipped);
+                        }
                     }
                 }
             });
@@ -112,11 +118,20 @@ where
                             for action in strategy.process_event(event).await {
                                 match action_sender.send(action) {
                                     Ok(_) => {}
-                                    Err(e) => error!("error sending action: {}", e),
+                                    Err(e) => {
+                                        error!("error sending action: {}", e);
+                                        break;
+                                    }
                                 }
                             }
                         }
-                        Err(e) => error!("error receiving event: {}", e),
+                        Err(RecvError::Closed) => {
+                            info!("event channel closed; stopping strategy thread");
+                            break;
+                        }
+                        Err(RecvError::Lagged(skipped)) => {
+                            error!("strategy lagged and skipped {} events", skipped);
+                        }
                     }
                 }
             });
