@@ -5,13 +5,17 @@ import {Owned} from "solmate/auth/Owned.sol";
 
 interface IWETH {
     function deposit() external payable;
+
     function withdraw(uint256) external;
+
     function balanceOf(address) external view returns (uint256);
+
     function transfer(address, uint256) external returns (bool);
 }
 
 interface IUniswapV2Pair {
     function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external;
 }
 
@@ -62,7 +66,7 @@ contract BlindArb is Owned, IUniswapV3SwapCallback {
             ""
         );
 
-        uint256 tokenOutExact = uint256(-tokenOut);
+        uint256 tokenOutExact = uint256(- tokenOut);
 
         IUniswapV2Pair v2Pair = IUniswapV2Pair(v2Pair);
         (uint256 v2Reserve0, uint256 v2Reserve1,) = v2Pair.getReserves();
@@ -71,7 +75,7 @@ contract BlindArb is Owned, IUniswapV3SwapCallback {
 
         uint256 balanceAfter = WETH.balanceOf(address(this));
         uint profit = balanceAfter - balanceBefore;
-        uint profitToCoinbase = profit *  percentageToPayToCoinbase / 100;
+        uint profitToCoinbase = profit * percentageToPayToCoinbase / 100;
         WETH.withdraw(profitToCoinbase);
         block.coinbase.transfer(profitToCoinbase);
         require(balanceAfter - profitToCoinbase > balanceBefore, "arb failed");
@@ -90,7 +94,7 @@ contract BlindArb is Owned, IUniswapV3SwapCallback {
         uint256 balanceBefore = WETH.balanceOf(address(this));
 
         // Swap on V3 
-        (int256 tokenOut, ) = IUniswapV3Pool(v3Pair).swap(
+        (int256 tokenOut,) = IUniswapV3Pool(v3Pair).swap(
             v2Pair,
             false,
             int256(amountIn),
@@ -98,7 +102,7 @@ contract BlindArb is Owned, IUniswapV3SwapCallback {
             ""
         );
 
-        uint256 tokenOutExact = uint256(-tokenOut);
+        uint256 tokenOutExact = uint256(- tokenOut);
 
         IUniswapV2Pair v2Pair = IUniswapV2Pair(v2Pair);
         (uint256 v2Reserve0, uint256 v2Reserve1,) = v2Pair.getReserves();
@@ -107,7 +111,7 @@ contract BlindArb is Owned, IUniswapV3SwapCallback {
 
         uint256 balanceAfter = WETH.balanceOf(address(this));
         uint profit = balanceAfter - balanceBefore;
-        uint profitToCoinbase = profit *  percentageToPayToCoinbase / 100;
+        uint profitToCoinbase = profit * percentageToPayToCoinbase / 100;
         WETH.withdraw(profitToCoinbase);
         block.coinbase.transfer(profitToCoinbase);
         require(balanceAfter - profitToCoinbase > balanceBefore, "arb failed");
@@ -127,9 +131,9 @@ contract BlindArb is Owned, IUniswapV3SwapCallback {
     }
 
     function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut)
-        internal
-        pure
-        returns (uint256 amountOut)
+    internal
+    pure
+    returns (uint256 amountOut)
     {
         uint256 amountInWithFee = amountIn * 997;
         uint256 numerator = amountInWithFee * reserveOut;

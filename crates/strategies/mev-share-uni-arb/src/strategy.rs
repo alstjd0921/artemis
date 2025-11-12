@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use alloy::rpc::types::mev::{BundleItem, Inclusion, MevSendBundle, ProtocolVersion};
+use alloy::rpc::types::mev::{BundleItem, Inclusion, MevSendBundle, Privacy, ProtocolVersion};
 use alloy::{
     eips::Encodable2718,
     network::{Ethereum, NetworkWallet, TransactionBuilder},
@@ -218,7 +218,7 @@ where
                 },
             ];
             let bundle = MevSendBundle {
-                protocol_version: ProtocolVersion::default(),
+                protocol_version: ProtocolVersion::V0_1,
                 inclusion: Inclusion {
                     block: block_num + 1,
                     // set a large validity window to ensure builder gets a chance to include bundle.
@@ -226,7 +226,17 @@ where
                 },
                 bundle_body: txs,
                 validity: None,
-                privacy: None,
+                privacy: Some(Privacy {
+                    hints: None,
+                    builders: Some(vec![
+                        "flashbots".into(),
+                        "Titan".into(),
+                        "rsync".into(),
+                        "beaverbuild.org".into(),
+                        "builder0x69".into(),
+                        "Quasar".into(),
+                    ]),
+                }),
             };
             info!("submitting bundle: {:?}", bundle);
             bundles.push(bundle);
