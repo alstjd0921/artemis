@@ -9,7 +9,7 @@ use reqwest::Client;
 use serde_json;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tracing::warn;
+use tracing::{trace, warn};
 
 /// A collector that streams from MEV-Share SSE endpoint
 /// and generates [events](Event), which return tx hash, logs, and bundled txs.
@@ -68,6 +68,7 @@ impl Collector<Event> for MevShareCollector {
                             }
                             match serde_json::from_str::<Event>(payload) {
                                 Ok(evt) => {
+                                    trace!("MEV-share event: {evt:?}");
                                     let _ = tx.send(evt);
                                 }
                                 Err(err) => {
