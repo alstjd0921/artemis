@@ -7,6 +7,7 @@ use alloy::providers::Provider;
 use alloy::rpc::types::TransactionRequest;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 /// An executor that sends transactions to the mempool.
 pub struct MempoolExecutor<M> {
@@ -14,7 +15,7 @@ pub struct MempoolExecutor<M> {
 }
 
 /// Information about the gas bid for a transaction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GasBidInfo {
     /// Total profit expected from opportunity
     pub total_profit: U256,
@@ -23,7 +24,7 @@ pub struct GasBidInfo {
     pub bid_percentage: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubmitTxToMempool {
     pub tx: TransactionRequest,
     pub gas_bid_info: Option<GasBidInfo>,

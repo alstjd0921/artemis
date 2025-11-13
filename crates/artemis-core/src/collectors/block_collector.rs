@@ -4,6 +4,7 @@ use alloy::providers::Provider;
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::StreamExt;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// A collector that listens for new blocks, and generates a stream of
@@ -13,7 +14,7 @@ pub struct BlockCollector<M> {
 }
 
 /// A new block event, containing the block number and hash.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewBlock {
     pub hash: B256,
     pub number: U64,

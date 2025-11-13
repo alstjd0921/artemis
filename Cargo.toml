@@ -15,6 +15,8 @@ default-members = ["bin/artemis", "bin/cli"]
 ## eth
 alloy = { version = "1.1.0", features = ["full", "provider-mev-api"] }
 
+mev-share-sse = "0.5.1"
+
 [profile.release]
 panic = 'abort'
 

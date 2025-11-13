@@ -4,6 +4,7 @@ use alloy::rpc::types::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use tokio_stream::{Stream, StreamExt};
 
@@ -95,7 +96,7 @@ where
 }
 
 /// Convenience enum containing all the events that can be emitted by collectors.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Events {
     NewBlock(NewBlock),
     Transaction(Box<Transaction>),
@@ -103,7 +104,7 @@ pub enum Events {
 }
 
 /// Convenience enum containing all the actions that can be executed by executors.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Actions {
     FlashbotsBundle(EthSendBundle),
     FlashbotsMevBundle(MevSendBundle),
