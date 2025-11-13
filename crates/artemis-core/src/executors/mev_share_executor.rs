@@ -33,6 +33,7 @@ where
     S: Signer + Clone + Send + Sync + 'static,
 {
     async fn execute(&self, bundle: MevSendBundle) -> Result<()> {
+        info!("MEV-share relay bundle: {:?}", bundle);
         match self
             .mev_provider
             .send_mev_bundle(bundle.clone())
