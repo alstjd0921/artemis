@@ -7,6 +7,7 @@ use alloy::{
     signers::local::PrivateKeySigner,
 };
 use anyhow::{Context, Result};
+use artemis_core::types::{MEV_RELAY, MEV_SHARE};
 use artemis_core::{
     collectors::mevshare_collector::MevShareCollector,
     engine::Engine,
@@ -18,7 +19,7 @@ use mev_share_uni_arb::{
     strategy::MevShareUniArb,
     types::{Action, Event},
 };
-use tracing::{info, Level};
+use tracing::{Level, info};
 use tracing_subscriber::{filter, prelude::*};
 
 /// CLI Options.
@@ -66,6 +67,9 @@ async fn main() -> Result<()> {
         .context("failed to parse private key")?;
     let wallet = EthereumWallet::from(wallet_signer);
 
+    let mev_provider = Arc::new(
+        ProviderBuilder::new().connect_http(MEV_RELAY.parse().expect("failed to parse relay url")),
+    );
     let fb_signer: PrivateKeySigner = args
         .flashbots_signer
         .parse()
@@ -75,9 +79,7 @@ async fn main() -> Result<()> {
     let mut engine: Engine<Event, Action> = Engine::default();
 
     // Set up collector.
-    let mevshare_collector = Box::new(MevShareCollector::new(String::from(
-        "https://mev-share.flashbots.net",
-    )));
+    let mevshare_collector = Box::new(MevShareCollector::new(MEV_SHARE.into()));
     let mevshare_collector = CollectorMap::new(mevshare_collector, Event::MEVShareEvent);
     engine.add_collector(Box::new(mevshare_collector));
 
@@ -86,7 +88,7 @@ async fn main() -> Result<()> {
     engine.add_strategy(Box::new(strategy));
 
     // Set up executor.
-    let mev_share_executor = Box::new(MevshareExecutor::new(fb_signer));
+    let mev_share_executor = Box::new(MevshareExecutor::new(mev_provider, fb_signer));
     let mev_share_executor = ExecutorMap::new(mev_share_executor, |action| match action {
         Action::SubmitBundle(bundle) => Some(bundle),
     });

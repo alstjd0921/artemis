@@ -8,6 +8,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde_json;
 use tokio::sync::mpsc;
+use tokio::time::{Duration, sleep};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{trace, warn};
 
@@ -33,51 +34,83 @@ impl Collector<Event> for MevShareCollector {
         let client = Client::new();
 
         tokio::spawn(async move {
-            let request = match client.get(&url).send().await {
-                Ok(resp) => resp,
-                Err(err) => {
-                    warn!("failed to connect to MEV-share SSE endpoint: {err}");
-                    return;
+            const INITIAL_BACKOFF_SECS: u64 = 1;
+            const MAX_BACKOFF_SECS: u64 = 30;
+            let mut backoff_delay = Duration::from_secs(INITIAL_BACKOFF_SECS);
+
+            loop {
+                if tx.is_closed() {
+                    trace!("MEV-share event receiver dropped, stopping collector loop");
+                    break;
                 }
-            };
 
-            let mut stream = request.bytes_stream();
-            let mut buffer: Vec<u8> = Vec::new();
-
-            while let Some(chunk) = stream.next().await {
-                let chunk = match chunk {
-                    Ok(bytes) => bytes,
+                let request = match client.get(&url).send().await {
+                    Ok(resp) => resp,
                     Err(err) => {
-                        warn!("MEV-share SSE stream error: {err}");
-                        break;
+                        warn!("failed to connect to MEV-share SSE endpoint: {err}");
+                        sleep(backoff_delay).await;
+                        backoff_delay =
+                            (backoff_delay * 2).min(Duration::from_secs(MAX_BACKOFF_SECS));
+                        continue;
                     }
                 };
 
-                buffer.extend_from_slice(&chunk);
+                let mut stream = request.bytes_stream();
+                let mut buffer: Vec<u8> = Vec::new();
+                backoff_delay = Duration::from_secs(INITIAL_BACKOFF_SECS);
 
-                while let Some(event) = extract_event(&mut buffer) {
-                    if event.is_empty() {
-                        continue;
-                    }
+                while let Some(chunk) = stream.next().await {
+                    let chunk = match chunk {
+                        Ok(bytes) => bytes,
+                        Err(err) => {
+                            warn!("MEV-share SSE stream error: {err}");
+                            break;
+                        }
+                    };
 
-                    for line in event.lines() {
-                        if let Some(data) = line.strip_prefix("data:") {
-                            let payload = data.trim();
-                            if payload.is_empty() || payload == "[DONE]" {
-                                continue;
-                            }
-                            match serde_json::from_str::<Event>(payload) {
-                                Ok(evt) => {
-                                    trace!("MEV-share event: {evt:?}");
-                                    let _ = tx.send(evt);
+                    buffer.extend_from_slice(&chunk);
+
+                    while let Some(event) = extract_event(&mut buffer) {
+                        if event.is_empty() {
+                            continue;
+                        }
+
+                        for line in event.lines() {
+                            if let Some(data) = line.strip_prefix("data:") {
+                                let payload = data.trim();
+                                if payload.is_empty() || payload == "[DONE]" {
+                                    continue;
                                 }
-                                Err(err) => {
-                                    trace!("failed to parse MEV-share event: {err}");
+                                match serde_json::from_str::<Event>(payload) {
+                                    Ok(evt) => {
+                                        trace!("MEV-share event: {evt:?}");
+                                        if tx.send(evt).is_err() {
+                                            trace!(
+                                                "all MEV-share receivers dropped, stopping stream"
+                                            );
+                                            return;
+                                        }
+                                    }
+                                    Err(err) => {
+                                        trace!("failed to parse MEV-share event: {err}");
+                                    }
                                 }
                             }
                         }
                     }
                 }
+
+                if tx.is_closed() {
+                    trace!("MEV-share event receiver dropped, stopping collector loop");
+                    break;
+                }
+
+                warn!(
+                    "MEV-share SSE stream ended, retrying connection in {}s",
+                    backoff_delay.as_secs()
+                );
+                sleep(backoff_delay).await;
+                backoff_delay = (backoff_delay * 2).min(Duration::from_secs(MAX_BACKOFF_SECS));
             }
         });
 

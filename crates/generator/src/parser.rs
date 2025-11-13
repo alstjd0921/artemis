@@ -2,7 +2,7 @@ use anyhow::{Error, Result};
 use clap::{Parser, ValueHint};
 use convert_case::{Case, Casing};
 use quote::__private::TokenStream;
-use std::fs::{create_dir, File};
+use std::fs::{File, create_dir};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;

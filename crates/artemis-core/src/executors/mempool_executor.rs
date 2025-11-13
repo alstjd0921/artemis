@@ -54,9 +54,8 @@ where
             // gas price at which we'd break even, meaning 100% of profit goes to validator
             let breakeven_gas_price = gas_bid_info.total_profit / gas_usage;
             // gas price corresponding to bid percentage
-            let scaled = breakeven_gas_price
-                * U256::from(gas_bid_info.bid_percentage)
-                / U256::from(100u64);
+            let scaled =
+                breakeven_gas_price * U256::from(gas_bid_info.bid_percentage) / U256::from(100u64);
             u128::try_from(scaled).context("bid gas price exceeds u128 range")?
         } else {
             self.client
