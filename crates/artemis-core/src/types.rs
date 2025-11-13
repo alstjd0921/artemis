@@ -1,10 +1,11 @@
-use alloy::rpc::types::eth::Transaction;
-use alloy::rpc::types::mev::EthSendBundle;
+use alloy::rpc::types::{
+    eth::Transaction,
+    mev::{EthSendBundle, MevSendBundle, mevshare},
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::pin::Pin;
-use tokio_stream::Stream;
-use tokio_stream::StreamExt;
+use tokio_stream::{Stream, StreamExt};
 
 use crate::collectors::block_collector::NewBlock;
 use crate::executors::mempool_executor::SubmitTxToMempool;
@@ -97,11 +98,13 @@ where
 pub enum Events {
     NewBlock(NewBlock),
     Transaction(Box<Transaction>),
+    MevShareEvent(mevshare::Event),
 }
 
 /// Convenience enum containing all the actions that can be executed by executors.
 pub enum Actions {
     FlashbotsBundle(EthSendBundle),
+    FlashbotsMevBundle(MevSendBundle),
     SubmitTxToMempool(Box<SubmitTxToMempool>),
 }
 
