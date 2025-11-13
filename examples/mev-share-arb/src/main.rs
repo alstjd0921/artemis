@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
     let mut engine: Engine<Event, Action> = Engine::default();
 
     // Set up collector.
-    let mevshare_collector = Box::new(MevShareCollector::new(MEV_SHARE.into()));
+    let mevshare_collector = Box::new(MevShareCollector::new());
     let mevshare_collector = CollectorMap::new(mevshare_collector, Event::MEVShareEvent);
     engine.add_collector(Box::new(mevshare_collector));
 

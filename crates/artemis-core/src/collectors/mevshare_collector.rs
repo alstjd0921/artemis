@@ -1,3 +1,4 @@
+use alloy::rpc::types::mev::mevshare::Event;
 use crate::types::{Collector, CollectorStream, Events, MEV_SHARE};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -19,8 +20,8 @@ impl MevShareCollector {
 /// Implementation of the [Collector](Collector) trait for the
 /// [MevShareCollector](MevShareCollector).
 #[async_trait]
-impl Collector<Events> for MevShareCollector {
-    async fn get_event_stream<'life1>(&self) -> Result<CollectorStream<'life1, Events>> {
+impl Collector<Event> for MevShareCollector {
+    async fn get_event_stream<'life1>(&self) -> Result<CollectorStream<'life1, Event>> {
         let (tx, rx) = mpsc::unbounded_channel();
 
         tokio::spawn(async move {
@@ -31,7 +32,7 @@ impl Collector<Events> for MevShareCollector {
                 while let Some(event) = stream.next().await {
                     match event {
                         Ok(event) => {
-                            if tx.send(Events::MevShareEvent(event)).is_err() {
+                            if tx.send(event).is_err() {
                                 trace!("all MEV-share receivers dropped, stopping stream");
                                 return;
                             }
