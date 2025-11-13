@@ -1,4 +1,5 @@
 use alloy::rpc::types::eth::Transaction;
+use alloy::rpc::types::mev::EthSendBundle;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::pin::Pin;
@@ -6,7 +7,6 @@ use tokio_stream::Stream;
 use tokio_stream::StreamExt;
 
 use crate::collectors::block_collector::NewBlock;
-use crate::executors::flashbots_executor::FlashbotsBundle;
 use crate::executors::mempool_executor::SubmitTxToMempool;
 
 /// A stream of events emitted by a [Collector](Collector).
@@ -101,6 +101,9 @@ pub enum Events {
 
 /// Convenience enum containing all the actions that can be executed by executors.
 pub enum Actions {
-    FlashbotsBundle(FlashbotsBundle),
+    FlashbotsBundle(EthSendBundle),
     SubmitTxToMempool(Box<SubmitTxToMempool>),
 }
+
+pub const MEV_SHARE: &str = "https://mev-share.flashbots.net";
+pub const MEV_RELAY: &str = "https://relay.flashbots.net";
