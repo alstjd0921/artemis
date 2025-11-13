@@ -95,6 +95,7 @@ where
 }
 
 /// Convenience enum containing all the events that can be emitted by collectors.
+#[derive(Debug, Clone)]
 pub enum Events {
     NewBlock(NewBlock),
     Transaction(Box<Transaction>),
@@ -102,6 +103,7 @@ pub enum Events {
 }
 
 /// Convenience enum containing all the actions that can be executed by executors.
+#[derive(Debug, Clone)]
 pub enum Actions {
     FlashbotsBundle(EthSendBundle),
     FlashbotsMevBundle(MevSendBundle),
