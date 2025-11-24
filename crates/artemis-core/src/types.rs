@@ -1,3 +1,4 @@
+use alloy::rpc::types::mev::EthSendPrivateTransaction;
 use alloy::rpc::types::{
     eth::Transaction,
     mev::{EthSendBundle, MevSendBundle, mevshare},
@@ -109,6 +110,7 @@ pub enum Actions {
     FlashbotsBundle(EthSendBundle),
     FlashbotsMevBundle(MevSendBundle),
     SubmitTxToMempool(Box<SubmitTxToMempool>),
+    PrivateTx(EthSendPrivateTransaction),
 }
 
 pub const MEV_SHARE: &str = "https://mev-share.flashbots.net";
