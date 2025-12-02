@@ -113,5 +113,31 @@ pub enum Actions {
     PrivateTx(EthSendPrivateTransaction),
 }
 
+pub const BUILDERS: &[&str] = &[
+    "flashbots",
+    "f1b.io",
+    "rsync",
+    "beaverbuild.org",
+    "builder0x69",
+    "Titan",
+    "EigenPhi",
+    "boba-builder",
+    "Gambit Labs",
+    "payload",
+    "Loki",
+    "BuildAI",
+    "JetBuilder",
+    "tbuilder",
+    "penguinbuild",
+    "bobthebuilder",
+    "BTCS",
+    "bloXroute",
+    "Blockbeelder",
+    "Quasar",
+    "Eureka",
+];
+
 pub const MEV_SHARE: &str = "https://mev-share.flashbots.net";
 pub const MEV_RELAY: &str = "https://relay.flashbots.net";
+
+pub const TITAN_ENDPOINT: &str = "https://rpc.titanbuilder.xyz";
