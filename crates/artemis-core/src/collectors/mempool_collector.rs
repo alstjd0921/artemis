@@ -3,7 +3,6 @@ use alloy::providers::Provider;
 use alloy::rpc::types::eth::Transaction;
 use anyhow::Result;
 use async_trait::async_trait;
-use futures::StreamExt;
 use std::sync::Arc;
 
 /// A collector that listens for new transactions in the mempool, and generates a stream of
@@ -26,17 +25,11 @@ where
     M: Provider + Send + Sync + 'static,
 {
     async fn get_event_stream<'life1>(&self) -> Result<CollectorStream<'life1, Transaction>> {
-        let provider = self.provider.clone();
-        let stream = self.provider.subscribe_pending_transactions().await?;
-        let stream = stream.into_stream().filter_map(move |hash| {
-            let provider = provider.clone();
-            async move {
-                match provider.get_transaction_by_hash(hash).await {
-                    Ok(Some(tx)) => Some(tx),
-                    _ => None,
-                }
-            }
-        });
+        let stream = self
+            .provider
+            .subscribe_full_pending_transactions()
+            .await?
+            .into_stream();
         Ok(Box::pin(stream))
     }
 }
